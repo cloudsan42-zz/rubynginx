@@ -1,0 +1,23 @@
+#!/usr/bin/env ruby
+require 'rack'
+require 'rack/handler/puma'
+
+child_pid = fork do
+  exec *ARGV
+end
+Process.detach(child_pid)
+
+Dir.mkdir('/tmp/stack_healthcheck')
+Dir.chdir('/tmp/stack_healthcheck')
+
+app = Proc.new do |env|
+  begin
+    Process.getpgid( child_pid )
+    ['200', {'Content-Type' => 'application/json'}, ['{"status": "ok"}']]
+  rescue Errno::ESRCH
+    ['500', {'Content-Type' => 'application/json'}, ['{"status": "not ok"}']]
+  end
+end
+
+port = ENV.fetch('STACK_HEALTHCHECK_PORT', 8080).to_i
+Rack::Handler::Puma.run(app, Port: port)
